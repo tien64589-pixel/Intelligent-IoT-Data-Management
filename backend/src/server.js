@@ -1,90 +1,55 @@
-//handles server setup and configuration for the Express backend
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 
-require('dotenv').config({ path: '../.env' }); // Load .env from root
-
-const express = require('express');
-const cors = require('cors');
-
-// Your CSR routing structure (datasets, series, timestamps, analyse, etc.)
-const apiRouter = require('./routes'); // loads index.js inside /routes
-
-// Upstream routes
-const mockRoutes = require('./routes/mock');
-const thingSpeakRoutes = require('./routes/thingspeak');
-const authRoutes = require('./routes/auth');
-
-
-const { startThingSpeakPolling } = require('./services/thingspeakService');
-
-// Debug-only imports (commented out for production)
-/// const authMiddleware = require("./middleware/authMiddleware");
-/// const { hashPassword, comparePassword } = require("./utils/hashUtils");
-/// const { generateToken } = require("./utils/tokenUtils");
+const express = require("express");
+const cors = require("cors");
+const apiRouter = require("./routes");
+const mockRoutes = require("./routes/mock");
+const thingSpeakRoutes = require("./routes/thingspeak");
+const authRoutes = require("./routes/auth");
+const { startThingSpeakPolling } = require("./services/thingspeakService");
 
 const app = express();
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "http://localhost:5173")
+  .split(",").map(value => value.trim()).filter(Boolean);
 
-app.use(cors());
-app.use(express.json());
-
-// Root ping
-app.get('/', (req, res) => {
-  res.send('Backend is running');
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
 });
+app.use(cors({ origin(origin, callback) {
+  if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+  return callback(new Error("Origin not allowed"));
+}, credentials: false }));
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "1mb" }));
 
-/* ---------------------------------------------------------
-   DEBUG ROUTES (COMMENTED OUT FOR PRODUCTION)
-   --------------------------------------------------------- */
+function fixedWindowRateLimit({ windowMs, limit }) {
+  const clients = new Map();
+  return (req, res, next) => {
+    const now = Date.now(); const key = req.ip; const current = clients.get(key);
+    if (!current || current.resetAt <= now) clients.set(key, { count: 1, resetAt: now + windowMs });
+    else if (++current.count > limit) {
+      res.setHeader("Retry-After", Math.ceil((current.resetAt - now) / 1000));
+      return res.status(429).json({ success: false, message: "Too many requests" });
+    }
+    return next();
+  };
+}
 
-/// // TEST: bcrypt hashing
-/// app.get("/api/hash-test", async (req, res) => {
-///   const password = "test123";
-///   const hash = await hashPassword(password);
-///   res.json({ password, hash });
-/// });
+const authLimit = fixedWindowRateLimit({ windowMs: 15 * 60 * 1000, limit: 20 });
+app.use(["/api/login", "/api/register", "/api/refresh-token"], authLimit);
 
-/// // TEST: bcrypt compare
-/// app.get("/api/compare-test", async (req, res) => {
-///   const password = "test123";
-///   const wrong = "wrong123";
-///
-///   const hash = await hashPassword(password);
-///
-///   const match = await comparePassword(password, hash);
-///   const wrongMatch = await comparePassword(wrong, hash);
-///
-///   res.json({ match, wrongMatch });
-/// });
+app.get("/", (req, res) => res.send("Backend is running"));
+app.get("/health", (req, res) => res.status(200).json({ status: "ok", timestamp: new Date().toISOString(), uptimeSeconds: process.uptime() }));
+app.use("/api", apiRouter);
+app.use("/api", authRoutes);
+app.use("/api", mockRoutes);
+app.use("/api", thingSpeakRoutes);
+app.use((err, req, res, next) => { console.error("Unhandled request error", { message: err.message }); res.status(500).json({ success: false, message: "Request failed" }); });
 
-/// // TEST: generate JWT
-/// app.get("/api/test-token", (req, res) => {
-///   const token = generateToken({ id: 1, role: "admin" });
-///   res.json({ token });
-/// });
-
-/// // PROTECTED ROUTE TEST
-/// app.get("/api/protected", authMiddleware, (req, res) => {
-///   res.json({
-///     message: "Access granted",
-///     user: req.user,
-///   });
-/// });
-
-/* ---------------------------------------------------------
-   END DEBUG ROUTES
-   --------------------------------------------------------- */
-
-// Mount original API routes (datasets, series, timestamps, analyse, etc.)
-app.use('/api', apiRouter);
-
-// Mount UPSTREAM routes (auth, mock, thingspeak)
-app.use('/api', authRoutes);
-app.use('/api', mockRoutes);
-app.use('/api', thingSpeakRoutes);
-
-// Start server
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  startThingSpeakPolling();
-});
+const PORT = Number(process.env.PORT || 3000);
+app.listen(PORT, () => { console.log(`Server listening on port ${PORT}`); startThingSpeakPolling(); });

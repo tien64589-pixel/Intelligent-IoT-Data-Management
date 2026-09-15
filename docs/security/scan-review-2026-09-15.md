@@ -9,7 +9,7 @@ Reviewed main commit: `2dd2dcd117d6eecbf82193dd8d9fe2dbe3beee93`.
 
 The scans are providing different levels of assurance. CodeQL completed and uploaded results. Gitleaks detected two historical items again. Semgrep reported a successful job even though its log showed a configuration error. A green workflow must not be presented as evidence that all vulnerabilities are fixed.
 
-No credential rotation, application deployment or successful remediation rescan is claimed in this review. The Semgrep correction is prepared on a review branch. Application fixes below remain recommendations.
+No credential rotation, application deployment or successful remediation rescan is claimed in this review. The draft branch corrects Semgrep execution, pins the actions in all three workflows to verified upstream commit SHAs, and disables debug mode and public binding in the three direct Flask launch blocks. These changes are not merged or deployed. Upload handling, detailed errors, rate limiting and credential remediation remain open.
 
 ## Verified workflow evidence
 
@@ -31,7 +31,7 @@ Priority is a review judgement, not a new CVSS score. Confirm exposure before as
 
 **Fix:** The credential owner should identify the issuer and check whether each value was ever usable. Revoke or rotate a real API credential; invalidate the exposed JWT/session using the issuer's supported mechanism. Replace usable credentials in examples or fixtures with unmistakably inert placeholders. Deleting a file or adding it to .gitignore does not remove Git history or revoke credentials. Coordinate any history rewrite with repository maintainers. For a proven dummy value, document the evidence before a narrowly scoped exception; do not suppress the whole directory.
 
-**Verification:** Record revocation or dummy-value evidence and rerun a history scan. Retain the scheduled Gitleaks scan: its failure is evidence of detection, not a broken scanner. See GitHub (n.d.-b) and Gitleaks (n.d.).
+**Verification:** Record revocation or dummy-value evidence and rerun a history scan. Retain the scheduled Gitleaks scan: its failure is evidence of detection, not a broken scanner. See GitHub (n.d.-c) and Gitleaks (n.d.).
 
 ### 2. Semgrep configuration — high assurance priority
 
@@ -41,7 +41,7 @@ Priority is a review judgement, not a new CVSS score. Confirm exposure before as
 
 **Prepared fix:** Replace the legacy action with Semgrep CLI 1.177.0 and explicit `p/ci` rules. Use `--error` to fail on findings and `--strict` for scan warnings/errors, write SARIF, and preserve the failing scan status. Upload SARIF only when it exists and the PR context supports write permissions. Add manual execution. This is Community Edition scanning; it does not reproduce any account-specific Pro rules or policies.
 
-**Verification:** YAML parsing and failure-propagation configuration were checked locally. A successful GitHub run is still required. Confirm rule loading, scanned/skipped files and expected detection using an intentionally vulnerable test fixture before calling the gate validated. Registry rules can change independently of the pinned CLI; retain rule metadata with evidence. See Semgrep (n.d.-a, n.d.-b).
+**Verification:** YAML parsing and failure-propagation configuration were checked locally. The first branch run [34966149606](https://github.com/tien64589-pixel/Intelligent-IoT-Data-Management/actions/runs/34966149606) executed 50 rules on 326 targets and correctly failed on 13 findings while uploading SARIF. The final remediation rescan remains pending. Confirm rule loading, scanned/skipped files and expected detection using an intentionally vulnerable test fixture before calling the gate validated. Registry rules can change independently of the pinned CLI; retain rule metadata with evidence. See Semgrep (n.d.-a, n.d.-b).
 
 ### 3. Python upload path — high if the endpoint is reachable
 
@@ -51,7 +51,7 @@ Priority is a review judgement, not a new CVSS score. Confirm exposure before as
 
 **Fix:** Since this handler immediately reads CSV data, prefer parsing the uploaded stream directly with `pd.read_csv(uploaded_file, parse_dates=['created_at'])` and remove the filename-based disk write. If persistent storage is required, generate the filename on the server, enforce containment within a dedicated directory and use exclusive creation. Validate CSV structure and enforce an agreed request-size limit.
 
-**Verification:** Test normal CSV upload, malformed CSV, oversized requests and traversal filenames. Confirm no file is created outside storage. See GitHub (n.d.-c).
+**Verification:** Test normal CSV upload, malformed CSV, oversized requests and traversal filenames. Confirm no file is created outside storage. See GitHub (n.d.-e).
 
 ### 4. Debug mode and detailed errors — high if exposed
 
@@ -67,7 +67,24 @@ Priority is a review judgement, not a new CVSS score. Confirm exposure before as
 
 The uploaded CodeQL evidence report refers to `backend/routes/auth.js:9,15` and `backend/routes/thingspeak.js:11`. Both paths returned 404 on current main. Its “13 open findings” is historical evidence, not a verified current count. Its v3/autobuild description also differs from current v4, build-mode none configuration.
 
-**Fix recommendation:** Review current CodeQL alerts and map them to the replacement routes. Where confirmed, place suitable rate limits before expensive authentication, database or outbound API work; configure trusted proxies and shared counters appropriately for deployment. Verify normal traffic works and excess requests receive 429 responses. Do not recreate obsolete files just to match old line numbers. See GitHub (n.d.-a, n.d.-d).
+**Fix recommendation:** Review current CodeQL alerts and map them to the replacement routes. Where confirmed, place suitable rate limits before expensive authentication, database or outbound API work; configure trusted proxies and shared counters appropriately for deployment. Verify normal traffic works and excess requests receive 429 responses. Do not recreate obsolete files just to match old line numbers. See GitHub (n.d.-a, n.d.-b).
+
+## Branch remediation and test scope
+
+The first valid Semgrep run found 13 issues: eight mutable action references, three debug-enabled launch calls, and two public development-server bindings. All eight action references are now pinned to upstream commit SHAs (GitHub, n.d.-d). The three launch blocks now explicitly disable debug mode and bind to loopback where a host is specified.
+
+| Verified source location before these edits | Change |
+| --- | --- |
+| .github/workflows/codeql.yml:65,75,107 | Pin checkout, CodeQL init and analyze actions. |
+| .github/workflows/gitleaks.yml:20,25 | Pin checkout and Gitleaks actions. |
+| .github/workflows/semgrep.yml:22,25,40 on the first draft commit | Pin checkout, Python setup and SARIF upload actions. |
+| correlation_alert/server.py:108 | Disable debug. Existing implicit loopback binding remains. |
+| data_science/archive/development/server.py:76 | Disable debug and bind the direct development launch to 127.0.0.1. |
+| data_science/archive/development/server_corr.py:141 | Disable debug and bind the direct development launch to 127.0.0.1. |
+
+The host change affects direct script execution: remote clients will no longer reach those development servers. Deployment should use a separately configured production WSGI server. These edits do not validate deployment architecture.
+
+All three Python files passed syntax/AST checks; each direct launch was checked for debug=False and loopback binding. All workflow YAML parsed and action references were checked for full-length commit pins. Application integration tests were not run. Existing upload-path and error-disclosure recommendations remain necessary even if Semgrep subsequently reports zero findings.
 
 ## Completion evidence required
 
@@ -77,11 +94,13 @@ Keep the finding ID, commit, file/line, owner, remediation commit, scan run and 
 
 GitHub. (n.d.-a). *Assessing code scanning alerts for your repository*. https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-code-scanning-alerts/assess-alerts
 
-GitHub. (n.d.-b). *Resolving alerts from secret scanning*. https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-secret-scanning-alerts/resolving-alerts
+GitHub. (n.d.-b). *Missing rate limiting*. CodeQL query help. https://codeql.github.com/codeql-query-help/javascript/js-missing-rate-limiting/
 
-GitHub. (n.d.-c). *Uncontrolled data used in path expression*. CodeQL query help. https://codeql.github.com/codeql-query-help/python/py-path-injection/
+GitHub. (n.d.-c). *Resolving alerts from secret scanning*. https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-secret-scanning-alerts/resolving-alerts
 
-GitHub. (n.d.-d). *Missing rate limiting*. CodeQL query help. https://codeql.github.com/codeql-query-help/javascript/js-missing-rate-limiting/
+GitHub. (n.d.-d). *Secure use reference*. https://docs.github.com/en/actions/reference/security/secure-use
+
+GitHub. (n.d.-e). *Uncontrolled data used in path expression*. CodeQL query help. https://codeql.github.com/codeql-query-help/python/py-path-injection/
 
 Gitleaks. (n.d.). *Gitleaks* [Computer software]. GitHub. https://github.com/gitleaks/gitleaks
 

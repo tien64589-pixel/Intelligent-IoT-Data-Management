@@ -137,5 +137,5 @@ def to_native(val):
 
 
 if __name__ == "__main__":
-    # debug=True for auto-reload on edits
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Local development only; use a production WSGI server for deployment.
+    app.run(host="127.0.0.1", port=5000, debug=False)

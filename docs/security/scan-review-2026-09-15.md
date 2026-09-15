@@ -41,11 +41,11 @@ Priority is a review judgement, not a new CVSS score. Confirm exposure before as
 
 **Prepared fix:** Replace the legacy action with Semgrep CLI 1.177.0 and explicit `p/ci` rules. Use `--error` to fail on findings and `--strict` for scan warnings/errors, write SARIF, and preserve the failing scan status. Upload SARIF only when it exists and the PR context supports write permissions. Add manual execution. This is Community Edition scanning; it does not reproduce any account-specific Pro rules or policies.
 
-**Verification:** YAML parsing and failure-propagation configuration were checked locally. The first branch run [34966149606](https://github.com/tien64589-pixel/Intelligent-IoT-Data-Management/actions/runs/34966149606) executed 50 rules on 326 targets and correctly failed on 13 findings while uploading SARIF. The final remediation rescan remains pending. Confirm rule loading, scanned/skipped files and expected detection using an intentionally vulnerable test fixture before calling the gate validated. Registry rules can change independently of the pinned CLI; retain rule metadata with evidence. See Semgrep (n.d.-a, n.d.-b).
+**Verification:** YAML parsing and failure-propagation configuration were checked locally. The first branch run [34966149606](https://github.com/tien64589-pixel/Intelligent-IoT-Data-Management/actions/runs/34966149606) executed 50 rules on 326 targets and correctly failed on 13 findings while uploading SARIF. The follow-up run is recorded below. Confirm rule loading, scanned/skipped files and expected detection using an intentionally vulnerable test fixture before calling the gate validated. Registry rules can change independently of the pinned CLI; retain rule metadata with evidence. See Semgrep (n.d.-a, n.d.-b).
 
 ### 3. Python upload path — high if the endpoint is reachable
 
-**Current source:** `data_science/archive/development/server.py:40–41` joins an uploaded filename directly to the storage directory and saves it.
+**Current source:** `data_science/archive/development/server.py:40–41` and `data_science/archive/development/server_corr.py:78–79` joins an uploaded filename directly to the storage directory and saves it.
 
 **Impact:** A crafted absolute or traversal filename may write outside the intended directory, subject to service permissions. The file is archived; production use is not confirmed.
 
@@ -55,7 +55,7 @@ Priority is a review judgement, not a new CVSS score. Confirm exposure before as
 
 ### 4. Debug mode and detailed errors — high if exposed
 
-**Current source:** `correlation_alert/server.py:108` and `data_science/archive/development/server.py:76` enable debug mode. Detailed exception text is returned at correlation lines 100–104 and archive lines 50–51 and 56–58.
+**Current source:** `correlation_alert/server.py:108` and `data_science/archive/development/server.py:76` enable debug mode. Detailed exception text is returned at correlation lines 100–104 and archive server.py lines 50–51 and 56–58, plus server_corr.py lines 88–89 and 94–96.
 
 **Impact:** Debug features and detailed errors may expose internal paths or implementation details. An exposed interactive debugger can have severe consequences; deployment exposure has not been established.
 
@@ -75,9 +75,9 @@ The first valid Semgrep run found 13 issues: eight mutable action references, th
 
 | Verified source location before these edits | Change |
 | --- | --- |
-| .github/workflows/codeql.yml:65,75,107 | Pin checkout, CodeQL init and analyze actions. |
+| .github/workflows/codeql.yml:60,70,99 | Pin checkout, CodeQL init and analyze actions. |
 | .github/workflows/gitleaks.yml:20,25 | Pin checkout and Gitleaks actions. |
-| .github/workflows/semgrep.yml:22,25,40 on the first draft commit | Pin checkout, Python setup and SARIF upload actions. |
+| .github/workflows/semgrep.yml:23,26,40 on the first draft commit | Pin checkout, Python setup and SARIF upload actions. |
 | correlation_alert/server.py:108 | Disable debug. Existing implicit loopback binding remains. |
 | data_science/archive/development/server.py:76 | Disable debug and bind the direct development launch to 127.0.0.1. |
 | data_science/archive/development/server_corr.py:141 | Disable debug and bind the direct development launch to 127.0.0.1. |
@@ -85,6 +85,16 @@ The first valid Semgrep run found 13 issues: eight mutable action references, th
 The host change affects direct script execution: remote clients will no longer reach those development servers. Deployment should use a separately configured production WSGI server. These edits do not validate deployment architecture.
 
 All three Python files passed syntax/AST checks; each direct launch was checked for debug=False and loopback binding. All workflow YAML parsed and action references were checked for full-length commit pins. Application integration tests were not run. Existing upload-path and error-disclosure recommendations remain necessary even if Semgrep subsequently reports zero findings.
+
+## Follow-up scan results
+
+Verified remediation commit: `a6c56f5f35391320676f3486a709e8a034e24cb4`.
+
+- [Semgrep run 34966487709](https://github.com/tien64589-pixel/Intelligent-IoT-Data-Management/actions/runs/34966487709): passed; 50 rules, 326 targets, zero findings, SARIF successfully uploaded. Two oversized files and four files matching ignore patterns were skipped. This result applies to the selected rules and scanned scope, not every possible vulnerability.
+- [CodeQL run 34966487630](https://github.com/tien64589-pixel/Intelligent-IoT-Data-Management/actions/runs/34966487630): both language jobs passed. This does not establish that the open-alert list is empty.
+- [Gitleaks run 34966487660](https://github.com/tien64589-pixel/Intelligent-IoT-Data-Management/actions/runs/34966487660): PR scan passed. The full-history findings from 14 September remain unresolved.
+
+The above runs precede this documentation-only update. No scan execution or alert resolution is inferred for a later commit.
 
 ## Completion evidence required
 

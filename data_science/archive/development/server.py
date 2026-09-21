@@ -2,6 +2,7 @@ import sys
 import os
 import pandas as pd
 from flask import Flask, request, jsonify
+from werkzeug.utils import secure_filename
 import json
 import numpy as np
 
@@ -37,7 +38,16 @@ def analyze():
 
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-    save_path = os.path.join(UPLOAD_FOLDER, uploaded_file.filename)
+    # Security control: never use the client-supplied filename directly in a path.
+    safe_filename = secure_filename(uploaded_file.filename)
+    if not safe_filename or not safe_filename.lower().endswith('.csv'):
+        return 'Only valid CSV files are accepted', 400
+
+    upload_root = os.path.abspath(UPLOAD_FOLDER)
+    save_path = os.path.abspath(os.path.join(upload_root, safe_filename))
+    if os.path.commonpath([upload_root, save_path]) != upload_root:
+        return 'Invalid upload path', 400
+
     uploaded_file.save(save_path)
 
     try:

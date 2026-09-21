@@ -9,6 +9,7 @@ POST /analytics/analyze
 
 from __future__ import annotations
 
+import os
 import pandas as pd
 
 from flask import (
@@ -398,8 +399,10 @@ def create_app() -> Flask:
 def main():
     app = create_app()
 
+    # Bind to loopback by default. External exposure must be an explicit
+    # deployment decision (for example behind a reverse proxy/container network).
     app.run(
-        host="0.0.0.0",
+        host=os.getenv("ANALYTICS_BIND_HOST", "127.0.0.1"),
         port=5002,
         debug=False,
     )

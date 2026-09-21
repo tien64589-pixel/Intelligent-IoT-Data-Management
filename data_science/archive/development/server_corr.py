@@ -148,4 +148,4 @@ def to_native(val):
 
 if __name__ == "__main__":
     # Security control: the archived service must never expose the Flask debugger.
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host=os.getenv("ARCHIVED_ANALYTICS_BIND_HOST", "127.0.0.1"), port=5000, debug=False)

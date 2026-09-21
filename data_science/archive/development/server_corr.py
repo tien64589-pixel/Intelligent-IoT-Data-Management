@@ -1,8 +1,8 @@
 import sys
 import os
 import pandas as pd
-from flask import Flask, request, jsonify
-from werkzeug.utils import secure_filename, send_file
+from flask import Flask, request, jsonify, send_file
+from werkzeug.utils import secure_filename
 import json
 import numpy as np
 from pathlib import Path
@@ -147,5 +147,5 @@ def to_native(val):
 
 
 if __name__ == "__main__":
-    # debug=True for auto-reload on edits
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Security control: the archived service must never expose the Flask debugger.
+    app.run(host="0.0.0.0", port=5000, debug=False)

@@ -82,5 +82,5 @@ def to_native(val):
     return val
 
 if __name__ == "__main__":
-    # debug=True for auto-reload on edits
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Security control: the archived service must never expose the Flask debugger.
+    app.run(host="0.0.0.0", port=5000, debug=False)

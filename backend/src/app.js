@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 
 const { assertProductionAuthConfig } = require("./config/authConfig");
 const { MAX_REQUEST_BODY_BYTES } = require("./config/uploadLimits");
@@ -43,6 +44,34 @@ function createApp() {
   app.use(express.json({ limit: MAX_REQUEST_BODY_BYTES }));
   app.use(cookieParser);
 
+  // Security control: limit repeated API requests to reduce brute-force and
+  // denial-of-service risk. Authentication endpoints use a stricter limit.
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 100,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: {
+      error: {
+        code: "RATE_LIMIT_EXCEEDED",
+        message: "Too many requests. Please try again later.",
+      },
+    },
+  });
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: {
+      error: {
+        code: "AUTH_RATE_LIMIT_EXCEEDED",
+        message: "Too many authentication attempts. Please try again later.",
+      },
+    },
+  });
+
   app.get("/", (_req, res) => {
     res.send("Backend is running");
   });
@@ -65,6 +94,10 @@ function createApp() {
         })
       : res.json({ status: "ready" }),
   );
+
+  // Apply rate limiting before any API route handlers.
+  app.use("/api/auth", authLimiter);
+  app.use("/api", apiLimiter);
 
   // Main Backend routes:
   // analyse, datasets, series, timestamps, mocks
